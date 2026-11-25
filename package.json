@@ -1,0 +1,13 @@
+{
+  "name": "pkguni",
+  "private": true,
+  "description": "Лабораторные работы по компьютерной графике",
+  "scripts": {
+    "test": "npm run test:lab1 && npm run test:lab2",
+    "test:lab1": "npm --prefix lab1 test",
+    "test:lab2": "npm --prefix lab2 test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
