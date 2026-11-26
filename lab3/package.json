@@ -1,0 +1,6 @@
+{
+  "name": "pkguni-lab3",
+  "type": "module",
+  "private": true,
+  "scripts": { "test": "node --test" }
+}

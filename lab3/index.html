@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Лабораторная №3 — обработка изображений</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◐</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Основы обработки цифровых изображений</h1>
+  <p class="sub">Лабораторная №3 · Вариант 15 · Локальные пороги и фильтры на порядковых статистиках</p>
+  <section class="panel toolbar" id="dropZone" aria-label="Загрузка изображения">
+    <label class="btn primary">Выбрать изображение<input id="fileInput" class="file-input" type="file" accept="image/*"></label>
+    <label class="sample-label" for="sample">Тестовый пример</label>
+    <select id="sample">
+      <option value="shadows">Текст с неравномерным освещением</option>
+      <option value="lowcontrast">Низкий контраст и текстура</option>
+      <option value="saltpepper">Импульсный шум «соль и перец»</option>
+      <option value="details">Светлые и тёмные детали</option>
+    </select>
+    <button type="button" class="btn" id="loadSample">Открыть пример</button>
+    <span class="hint">или перетащите файл в окно</span>
+  </section>
+  <div class="layout">
+    <aside class="panel settings">
+      <h2>Параметры обработки</h2>
+      <form id="settings">
+        <label for="method">Метод</label>
+        <select id="method">
+          <optgroup label="Локальная пороговая обработка">
+            <option value="niblack">Ниблэк</option><option value="bernsen">Бернсен</option>
+          </optgroup>
+          <optgroup label="Адаптивная пороговая обработка">
+            <option value="sauvola" selected>Саувола</option><option value="bradley">Брэдли — дополнительный</option>
+          </optgroup>
+          <optgroup label="Порядковые статистики">
+            <option value="median">Медианный фильтр</option><option value="minimum">Минимальный фильтр</option><option value="maximum">Максимальный фильтр</option>
+          </optgroup>
+        </select>
+        <p class="note" id="methodHelp"></p>
+        <label for="radius">Радиус окна <output id="windowSize"></output></label>
+        <input id="radius" type="range" min="1" max="25" value="7">
+        <div id="kGroup"><label for="k">Коэффициент k</label><input id="k" type="number" min="-1" max="1" step="0.01" value="0.34" required></div>
+        <div id="rGroup"><label for="r">Динамический диапазон R</label><input id="r" type="number" min="1" max="255" step="1" value="128" required></div>
+        <div id="contrastGroup" hidden><label for="contrast">Минимальный локальный контраст</label><input id="contrast" type="number" min="0" max="255" value="15" required></div>
+        <div id="tGroup" hidden><label for="t">Отступ от среднего, %</label><input id="t" type="number" min="0" max="100" step="1" value="15" required></div>
+        <label for="border">Обработка краёв</label>
+        <select id="border"><option value="reflect">Reflect — зеркальное отражение</option><option value="clamp">Clamp — крайний пиксель</option></select>
+        <label for="threads">Рабочие потоки</label>
+        <select id="threads"><option value="1">1 поток</option><option value="2" selected>2 потока</option><option value="4">4 потока</option></select>
+        <label class="check"><input id="denoise" type="checkbox"> Сначала медианный фильтр 3×3</label>
+        <p class="note">Каждый запуск обрабатывает исходную яркость. Предварительная медиана полезна для зашумлённого текста.</p>
+        <div class="actions"><button class="btn primary" id="run" type="submit" disabled>Обработать</button><button class="btn" type="button" id="cancel" hidden>Остановить</button></div>
+      </form>
+      <progress id="progress" max="1" value="0" aria-label="Прогресс обработки"></progress>
+      <p id="status" role="status" aria-live="polite">Загрузка примера…</p>
+      <p class="note" id="sampleHelp"></p>
+    </aside>
+    <section class="comparison" aria-label="Сравнение изображений">
+      <figure class="panel image-panel"><figcaption><h2>До обработки</h2><span id="sourceInfo" class="note"></span></figcaption><div class="image-wrap"><canvas id="before" aria-label="Исходное изображение в оттенках серого"></canvas></div><canvas class="histogram" id="histBefore" width="512" height="100" aria-label="Гистограмма до обработки"></canvas></figure>
+      <figure class="panel image-panel"><figcaption><h2>После обработки</h2><button class="btn" id="save" type="button" disabled>Сохранить PNG</button></figcaption><div class="image-wrap"><canvas id="after" aria-label="Обработанное изображение"></canvas><span id="empty">Выберите метод и нажмите «Обработать»</span></div><canvas class="histogram" id="histAfter" width="512" height="100" aria-label="Гистограмма после обработки"></canvas><p class="note" id="resultInfo"></p></figure>
+    </section>
+  </div>
+  <details class="panel help"><summary>Методы, формулы и сравнение результатов</summary>
+    <p>Все методы работают с яркостью Y = 0,299R + 0,587G + 0,114B. Прозрачность накладывается на белый фон. Пиксель становится белым, если Y &gt; T, иначе — чёрным.</p>
+    <div class="table-wrap"><table><thead><tr><th>Метод</th><th>Правило</th><th>Что проверять</th></tr></thead><tbody>
+      <tr><td>Ниблэк</td><td>T = m + kσ</td><td>Тонкие малоконтрастные линии; на текстурном фоне может сохранять шум.</td></tr>
+      <tr><td>Бернсен</td><td>T = (min + max) / 2</td><td>Контрастные детали. При max − min &lt; C всё окно классифицируется по середине диапазона относительно 128.</td></tr>
+      <tr><td>Саувола</td><td>T = m [1 + k(σ/R − 1)]</td><td>Текст на неоднородном светлом фоне; адаптация к локальному разбросу яркости.</td></tr>
+      <tr><td>Брэдли</td><td>T = m(1 − t/100)</td><td>Быстрый адаптивный порог по локальному среднему.</td></tr>
+      <tr><td>Медиана / минимум / максимум</td><td>Средний / первый / последний элемент упорядоченного окна</td><td>Медиана убирает импульсы; минимум расширяет тёмные области, максимум — светлые.</td></tr>
+    </tbody></table></div>
+    <p>m и σ вычисляются за O(1) на окно по интегральным изображениям суммы и суммы квадратов. Для ранговых фильтров и Бернсена используется скользящая гистограмма. Потоки обрабатывают полосы с перекрытием на радиус окна: швы отсутствуют.</p>
+    <p>Края: Clamp повторяет крайний пиксель; Reflect зеркалит без повторения крайнего пикселя. Исходник не изменяется. Параметры применяются кнопкой, а не автоматически.</p>
+    <p><a href="README.md">Документация</a> · <a href="REPORT.md">Аналитический отчёт и воспроизводимые измерения</a></p>
+  </details>
+</main>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
